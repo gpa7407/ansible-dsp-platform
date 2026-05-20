@@ -1,0 +1,46 @@
+---
+# Test playbook for virtru.dsp_platform.teardown
+#
+# Usage:
+#   ansible-playbook tests/test_teardown.yml -i tests/inventory.ini
+#
+# Dry run:
+#   ansible-playbook tests/test_teardown.yml -i tests/inventory.ini --check
+#
+# Defaults below are conservative: helm release and namespace are removed
+# but the local extract dir and registry images are left in place. Override
+# via -e to nuke more aggressively.
+- name: Teardown DSP deployment
+  hosts: dsp
+  become: true
+  gather_facts: false
+
+  vars:
+    dsp_namespace: "{{ lookup('env', 'DSP_NAMESPACE') | default('virtru', true) }}"
+    dsp_helm_release: "{{ lookup('env', 'DSP_HELM_RELEASE') | default('dsp', true) }}"
+    dsp_remove_extract_dir: false
+    dsp_remove_registry_images: false
+    dsp_extract_dir: /opt/virtru
+    dsp_registry_url: localhost:8888/virtru
+
+  tasks:
+    - name: Teardown DSP
+      virtru.dsp_platform.teardown:
+        namespace: "{{ dsp_namespace }}"
+        helm_release: "{{ dsp_helm_release }}"
+        remove_helm_release: true
+        remove_namespace: true
+        remove_extract_dir: "{{ dsp_remove_extract_dir }}"
+        extract_dir: "{{ dsp_extract_dir }}"
+        remove_registry_images: "{{ dsp_remove_registry_images }}"
+        registry_url: "{{ dsp_registry_url }}"
+        registry_insecure: true
+        wait: true
+        force: false
+      register: teardown_result
+      tags: [teardown]
+
+    - name: Show teardown results
+      ansible.builtin.debug:
+        var: teardown_result
+      tags: [teardown]
