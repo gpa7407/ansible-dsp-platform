@@ -35,6 +35,8 @@ build_ignore:
   - .git
   - .gitignore
   - .github
+  - .ansible
+  - .ansible-lint
   - tests/integration/inventory*
   - changelogs/.plugin-cache.yaml
   - '*.tar.gz'
