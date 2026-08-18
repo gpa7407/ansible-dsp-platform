@@ -77,11 +77,35 @@ ansible-galaxy collection install virtru.dsp_platform
 ansible-galaxy collection install git+https://github.com/gpa7407/ansible-dsp-platform.git
 ```
 
-Install the Python libraries the modules need **on the target host**:
+Install the Python libraries the modules need **on the target host** — either
+directly:
 
 ```bash
 pip3 install kubernetes cryptography PyYAML
 ```
+
+...or as an Ansible play you run before `dsp_deploy` (recommended, so the whole
+deploy is reproducible):
+
+```yaml
+- name: Install DSP deploy prerequisites
+  hosts: dsp
+  become: true
+  tasks:
+    - name: Install Python libraries for kubernetes.core + community.crypto
+      ansible.builtin.pip:
+        name:
+          - kubernetes
+          - cryptography
+          - PyYAML
+        # On distros with an externally-managed Python (PEP 668, e.g. Ubuntu
+        # 24.04), either set this or install into a virtualenv:
+        break_system_packages: true
+```
+
+> `break_system_packages` requires ansible-core >= 2.16. On older versions use
+> `extra_args: --break-system-packages`, a virtualenv (`virtualenv: /opt/dsp-venv`),
+> or the distro packages (e.g. `python3-kubernetes`, `python3-cryptography`).
 
 ## Usage
 
