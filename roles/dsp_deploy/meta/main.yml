@@ -1,0 +1,36 @@
+---
+galaxy_info:
+  role_name: dsp_deploy
+  author: Greg Paladin
+  description: >-
+    Deploy the Virtru Data Security Platform (DSP) onto an existing
+    K3s/Kubernetes cluster using rendered manifests and the kubernetes.core
+    modules.
+  company: Virtru
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - dsp
+    - opentdf
+    - kubernetes
+    - k3s
+    - helm
+    - keycloak
+    - virtru
+
+# Collections this role relies on at runtime.
+collections:
+  - kubernetes.core
+  - community.crypto
+  - community.general
+  - virtru.dsp_platform
+
+dependencies: []

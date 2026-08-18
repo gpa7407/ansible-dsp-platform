@@ -1,0 +1,132 @@
+{{ ansible_managed | comment }}
+# Rendered by the virtru.dsp_platform.dsp_deploy role.
+# Passed to `helm upgrade --install` as -f. YAML anchors are preserved so a
+# single value propagates to every alias (*anchor) at parse time.
+#
+# DSP uses an EXTERNAL OIDC IdP and PostgreSQL; this file does not deploy or
+# configure any embedded keycloak/postgres.
+#############################################
+#            Platform YAML Aliases          #
+#############################################
+platformRegistry: &platformRegistry {{ dsp_registry_url }}/data-security-platform
+platformHostname: &platformHostname {{ dsp_platform_hostname }}
+platformEndpoint: &platformEndpoint {{ dsp_platform_url }}
+
+#############################################
+#            IDP Configuration              #
+#############################################
+authEndpoint: &authEndpoint {{ dsp_auth_url }}
+issuer: &issuer {{ dsp_issuer }}
+tokenEndpoint: &tokenEndpoint {{ dsp_token_endpoint }}
+
+#############################################
+#            Database Configuration         #
+#############################################
+dbHost: &dbHost {{ dsp_db_host }}
+dbPort: &dbPort {{ dsp_db_port }}
+databaseName: &databaseName {{ dsp_db_name }}
+dbUser: &dbUser {{ dsp_db_user }}
+
+#############################################
+#            Content Extractor              #
+#############################################
+tikaRepository: &tikaRepository {{ dsp_registry_url }}/tika
+
+#############################################
+#            DSP Configuration              #
+#############################################
+platform:
+  mode: {{ dsp_deployment_mode | default('all') }}
+  db:
+    required: true
+    host: *dbHost
+    port: *dbPort
+    database: *databaseName
+    user: *dbUser
+    sslmode: prefer
+    password:
+      secret:
+        name: {{ dsp_db_credentials_secret }}
+        key: password
+  image:
+    repository: *platformRegistry
+    tag: {{ dsp_tag }}
+  ingress:
+    # Ingress is handled out-of-band via a Traefik IngressRoute (see ingress.yml).
+    enabled: false
+  server:
+    auth:
+      issuer: *issuer
+      audience: *platformEndpoint
+      policy:
+        extension: |
+          g, dsp-org-admin, role:org-admin
+          g, dsp-admin, role:admin
+          g, dsp-standard, role:standard
+{% if dsp_cors_enabled %}
+    cors:
+      enabled: true
+      allowedorigins:
+{% for origin in dsp_cors_origins %}
+        - "{{ origin }}"
+{% endfor %}
+{% endif %}
+    tls:
+      additionalTrustedCerts:
+{% if dsp_additional_trusted_certs %}
+{{ dsp_additional_trusted_certs | to_nice_yaml(indent=2) | indent(8, first=True) }}
+{% else %}
+        - secret:
+            name: {{ dsp_gateway_tls_secret }}
+            items:
+              - key: tls.crt
+                path: platform.crt
+{% endif %}
+{% if dsp_tag is version('v2.6', '>=') %}
+  http:
+    readTimeout: 30s
+    writeTimeout: 30s
+  enable_pprof: true
+{% endif %}
+  services:
+    entityresolution:
+      url: *authEndpoint
+      clientid: tdf-entity-resolution
+      clientsecret: secret
+      realm: {{ dsp_keycloak_realm }}
+      subgroups: false
+      inferid:
+        from:
+          email: true
+          username: true
+    kas:
+      privateKeysSecret: kas-private-keys
+      preview:
+        ec_tdf_enabled: true
+        key_management: false
+    policyimportexport:
+      enabled: true
+      privatesignkey: dsp-keys/policyimportexport/cosign.key
+      privatesignkeypassphrasepath: dsp-keys/policyimportexport/cosign.pass
+      truststore: dsp-keys/policyimportexport
+  dsp_services:
+    tdfviewer:
+      enabled: false
+    outlook:
+      enabled: false
+    sharepoint:
+      enabled: false
+    web-admin:
+      enabled: false
+      client_id: dsp-web-admin
+      issuer_endpoint: *issuer
+      base_url: *platformEndpoint
+    taggingpdp:
+      taggingWorkflow: config.yaml
+{% if dsp_tag is version('v2.6', '>=') %}
+      tikaServerUrl: "http://tikaservice.{{ dsp_namespace }}.svc.cluster.local:9998"
+{% endif %}
+
+tika:
+  image:
+    repository: *tikaRepository

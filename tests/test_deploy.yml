@@ -1,0 +1,20 @@
+---
+# Integration test playbook for the dsp_deploy role.
+#
+# Usage:
+#   ansible-playbook tests/test_deploy.yml -i tests/inventory.ini \
+#     -e dsp_domain=dsp.vm -e dsp_tag=v2.8.0 \
+#     -e dsp_bundle_file=/opt/virtru-dsp-bundle-2.0.7.tar.gz
+#
+# Check mode (dry run):
+#   ansible-playbook tests/test_deploy.yml -i tests/inventory.ini --check
+#
+# Post-deploy policy configuration (namespaces, attributes, KAS keys,
+# subject/resource mappings) is handled by the separate virtru.dsp_tructl
+# collection. This playbook deploys and verifies infrastructure health only.
+- name: Test DSP deployment on K3s
+  hosts: dsp
+  become: true
+  gather_facts: true
+  roles:
+    - role: virtru.dsp_platform.dsp_deploy

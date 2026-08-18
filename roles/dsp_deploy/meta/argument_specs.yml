@@ -1,0 +1,166 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy Virtru DSP on K3s/Kubernetes
+    description:
+      - Renders DSP manifests from templates and applies them with the
+        kubernetes.core modules (helm, k8s, k8s_info).
+      - Requires an existing, reachable Kubernetes cluster (KUBECONFIG set or
+        the K3s kubeconfig at /etc/rancher/k3s/k3s.yaml).
+    options:
+      dsp_domain:
+        type: str
+        required: true
+        description: Base domain for the deployment (e.g. C(dsp.vm)).
+      dsp_namespace:
+        type: str
+        default: virtru
+        description: Kubernetes namespace for DSP.
+      dsp_release_name:
+        type: str
+        default: dsp
+        description: Helm release name.
+      dsp_deployment_mode:
+        type: str
+        default: all
+        description: Chart platform.mode value.
+      dsp_tag:
+        type: str
+        description: >-
+          DSP application/image tag (e.g. C(v2.8.0)). Auto-detected from the
+          bundle oci-artifacts directory when empty.
+      dsp_bundle_file:
+        type: path
+        description: Path to the DSP bundle tar.gz. Optional if pre-extracted at the bundle dir.
+      dsp_extract_dir:
+        type: path
+        default: /opt/virtru
+        description: Working directory for the extracted bundle and tools.
+      dsp_registry_url:
+        type: str
+        default: localhost:8888/virtru
+        description: Container registry (host/namespace) images are pushed to and pulled from.
+      dsp_registry_insecure:
+        type: bool
+        default: true
+        description: Push images over HTTP instead of HTTPS.
+      dsp_platform_hostname:
+        type: str
+        description: Platform hostname. Defaults to platform + the base domain.
+      dsp_keycloak_hostname:
+        type: str
+        description: Keycloak/IdP hostname. Defaults to keycloak + the base domain.
+      dsp_tagging_hostname:
+        type: str
+        description: Tagging PDP hostname. Defaults to tagging-pdp + the base domain.
+      dsp_keycloak_realm:
+        type: str
+        default: opentdf
+        description: Keycloak realm name.
+      dsp_keycloak_provision:
+        type: bool
+        default: true
+        description: >-
+          Provision the DSP realm, roles, clients and service-account role
+          mappings on the external Keycloak using the community.general.keycloak_*
+          modules. Requires dsp_keycloak_admin_password.
+      dsp_keycloak_admin_user:
+        type: str
+        default: admin
+        description: Admin username of the external Keycloak.
+      dsp_keycloak_client_secret:
+        type: str
+        default: secret
+        description: Shared secret assigned to confidential clients (override for production).
+      dsp_keycloak_token_audience:
+        type: str
+        description: Audience written into tokens by the shared audience mapper. Defaults to the platform URL.
+      dsp_keycloak_realm_roles:
+        type: list
+        elements: str
+        description: Realm roles created in the DSP realm (default dsp-org-admin/dsp-admin/dsp-standard).
+      dsp_keycloak_seed_users:
+        type: bool
+        default: false
+        description: Create the sample users in dsp_keycloak_users (test data).
+      dsp_db_host:
+        type: str
+        default: platform-db
+        description: Database host.
+      dsp_db_port:
+        type: int
+        default: 5432
+        description: Database port.
+      dsp_db_name:
+        type: str
+        default: opentdf
+        description: Database name.
+      dsp_db_user:
+        type: str
+        default: opentdf
+        description: Database user.
+      dsp_db_password:
+        type: str
+        description: Database password. Auto-generated when empty.
+      dsp_cors_enabled:
+        type: bool
+        default: true
+        description: Enable platform CORS.
+      dsp_cors_origins:
+        type: list
+        elements: str
+        default:
+          - "*"
+          - "localhost:3000"
+        description: Allowed CORS origins.
+      dsp_additional_trusted_certs:
+        type: list
+        elements: dict
+        default: []
+        description: Extra TLS trusted-cert sources for the platform (chart schema).
+      dsp_keycloak_admin_password:
+        type: str
+        description: Keycloak admin password. Read from the secret when empty.
+      dsp_cosign_password:
+        type: str
+        description: Cosign passphrase. Auto-generated when empty.
+      dsp_kas_key_size:
+        type: int
+        default: 2048
+        description: RSA key size for KAS keys.
+      dsp_helm_timeout:
+        type: str
+        default: 15m
+        description: Helm operation timeout.
+      dsp_wait:
+        type: bool
+        default: true
+        description: Wait for workloads to become Ready.
+      dsp_wait_timeout:
+        type: int
+        default: 900
+        description: Readiness wait budget in seconds.
+      dsp_kubeconfig:
+        type: path
+        default: /etc/rancher/k3s/k3s.yaml
+        description: Path to the kubeconfig used for all cluster operations.
+      dsp_extra_values:
+        type: dict
+        default: {}
+        description: Extra Helm values layered on top of the rendered values.yaml.
+      dsp_keycloak_clients:
+        type: list
+        elements: dict
+        description: >-
+          Clients created in the realm (defaults to the full DSP client set).
+          Each item has clientId and optional publicClient/serviceAccountsEnabled/
+          standardFlowEnabled/directAccessGrantsEnabled/redirectUris/webOrigins/
+          sa_realm_roles/sa_client_roles.
+      dsp_keycloak_users:
+        type: list
+        elements: dict
+        description: Users created when dsp_keycloak_seed_users is true (username/email/password/realm_roles/attributes).
+      dsp_run_verify:
+        type: bool
+        default: true
+        description: Run virtru.dsp_platform.verify after deploy.

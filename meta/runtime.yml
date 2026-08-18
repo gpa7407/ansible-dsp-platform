@@ -1,1 +1,17 @@
-requires_ansible: ">=2.14.0"
+---
+requires_ansible: ">=2.15.0"
+
+plugin_routing:
+  modules:
+    deploy_k3s:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          The deploy_k3s module has been replaced by the
+          virtru.dsp_platform.dsp_deploy role, which renders manifests from
+          Jinja2 templates and applies them via kubernetes.core.
+    helm_deploy:
+      tombstone:
+        removal_version: 2.0.0
+        warning_text: >-
+          The helm_deploy module has been removed. Use kubernetes.core.helm.

@@ -1,0 +1,126 @@
+---
+# Provision the DSP realm/roles/clients on the external Keycloak using the
+# native community.general.keycloak_* modules (works on DSP 2.0.7+, which
+# removed `tructl provision`). Runs only when dsp_keycloak_provision is true.
+- name: Require Keycloak admin password for provisioning
+  ansible.builtin.assert:
+    that:
+      - dsp_keycloak_admin_password | length > 0
+    fail_msg: >-
+      dsp_keycloak_admin_password is required when dsp_keycloak_provision is true
+      (admin credentials for the external Keycloak at {{ dsp_auth_url }}).
+    quiet: true
+
+- name: Wait for the external Keycloak to answer
+  ansible.builtin.uri:
+    url: "{{ dsp_auth_url }}/realms/master/.well-known/openid-configuration"
+    validate_certs: false
+    status_code: [200]
+  register: dsp_kc_ready
+  retries: "{{ dsp_health_retries }}"
+  delay: "{{ dsp_health_delay }}"
+  until: dsp_kc_ready.status == 200
+
+- name: Provision the DSP realm
+  module_defaults:
+    group/community.general.keycloak:
+      auth_keycloak_url: "{{ dsp_auth_url }}"
+      auth_realm: master
+      auth_username: "{{ dsp_keycloak_admin_user }}"
+      auth_password: "{{ dsp_keycloak_admin_password }}"
+      auth_client_id: admin-cli
+      validate_certs: false
+  block:
+    - name: Create realm
+      community.general.keycloak_realm:
+        id: "{{ dsp_keycloak_realm }}"
+        realm: "{{ dsp_keycloak_realm }}"
+        enabled: true
+        state: present
+
+    - name: Create realm roles
+      community.general.keycloak_role:
+        realm: "{{ dsp_keycloak_realm }}"
+        name: "{{ item }}"
+        state: present
+      loop: "{{ dsp_keycloak_realm_roles }}"
+
+    - name: Create clients (with shared audience mapper)
+      community.general.keycloak_client:
+        realm: "{{ dsp_keycloak_realm }}"
+        client_id: "{{ item.clientId }}"
+        enabled: true
+        public_client: "{{ item.publicClient | default(false) }}"
+        service_accounts_enabled: "{{ item.serviceAccountsEnabled | default(false) }}"
+        standard_flow_enabled: "{{ item.standardFlowEnabled | default(false) }}"
+        direct_access_grants_enabled: "{{ item.directAccessGrantsEnabled | default(false) }}"
+        client_authenticator_type: "{{ omit if (item.publicClient | default(false)) else 'client-secret' }}"
+        secret: "{{ omit if (item.publicClient | default(false)) else dsp_keycloak_client_secret }}"
+        redirect_uris: "{{ item.redirectUris | default(omit) }}"
+        web_origins: "{{ item.webOrigins | default(omit) }}"
+        protocol_mappers:
+          - name: audience-mapper
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.client.audience: "{{ dsp_keycloak_token_audience }}"
+              access.token.claim: "true"
+              id.token.claim: "true"
+        state: present
+      loop: "{{ dsp_keycloak_clients }}"
+      loop_control:
+        label: "{{ item.clientId }}"
+
+    - name: Map service-account realm roles
+      community.general.keycloak_user_rolemapping:
+        realm: "{{ dsp_keycloak_realm }}"
+        service_account_user_client_id: "{{ item.clientId }}"
+        roles: "{{ item.sa_realm_roles | map('community.general.dict_kv', 'name') | list }}"
+        state: present
+      loop: "{{ dsp_keycloak_clients | selectattr('sa_realm_roles', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.clientId }}"
+
+    - name: Map service-account realm-management client roles (entity resolution)
+      community.general.keycloak_user_rolemapping:
+        realm: "{{ dsp_keycloak_realm }}"
+        service_account_user_client_id: "{{ item.clientId }}"
+        client_id: realm-management
+        roles: "{{ item.sa_client_roles['realm-management'] | map('community.general.dict_kv', 'name') | list }}"
+        state: present
+      loop: "{{ dsp_keycloak_clients | selectattr('sa_client_roles', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.clientId }}"
+      when: "'realm-management' in item.sa_client_roles"
+
+    - name: Seed sample users
+      community.general.keycloak_user:
+        realm: "{{ dsp_keycloak_realm }}"
+        username: "{{ item.username }}"
+        email: "{{ item.email | default(omit) }}"
+        enabled: true
+        email_verified: true
+        attributes: "{{ item.attributes | default({}) | dict2items(key_name='name', value_name='values') }}"
+        credentials:
+          - type: password
+            value: "{{ item.password }}"
+            temporary: false
+        state: present
+      loop: "{{ dsp_keycloak_users }}"
+      loop_control:
+        label: "{{ item.username }}"
+      no_log: true
+      when: dsp_keycloak_seed_users | bool
+
+    - name: Map sample user realm roles
+      community.general.keycloak_user_rolemapping:
+        realm: "{{ dsp_keycloak_realm }}"
+        target_username: "{{ item.username }}"
+        roles: "{{ item.realm_roles | default([]) | map('community.general.dict_kv', 'name') | list }}"
+        state: present
+      loop: "{{ dsp_keycloak_users }}"
+      loop_control:
+        label: "{{ item.username }}"
+      when:
+        - dsp_keycloak_seed_users | bool
+        - item.realm_roles | default([]) | length > 0

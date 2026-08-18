@@ -1,0 +1,78 @@
+---
+# Gateway TLS certificate (Traefik terminates TLS with this cert).
+- name: Ensure certs directory exists
+  ansible.builtin.file:
+    path: "{{ dsp_extract_dir }}/certs"
+    state: directory
+    mode: "0755"
+
+- name: Generate gateway TLS private key
+  community.crypto.openssl_privatekey:
+    path: "{{ dsp_extract_dir }}/certs/gateway.key"
+    type: RSA
+    size: 2048
+
+- name: Generate gateway TLS CSR (with SANs)
+  community.crypto.openssl_csr:
+    path: "{{ dsp_extract_dir }}/certs/gateway.csr"
+    privatekey_path: "{{ dsp_extract_dir }}/certs/gateway.key"
+    common_name: "{{ dsp_platform_hostname }}"
+    subject_alt_name:
+      - "DNS:{{ dsp_platform_hostname }}"
+      - "DNS:{{ dsp_keycloak_hostname }}"
+      - "DNS:{{ dsp_tagging_hostname }}"
+      - "DNS:*.{{ dsp_domain }}"
+
+- name: Generate gateway self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ dsp_extract_dir }}/certs/gateway.pem"
+    privatekey_path: "{{ dsp_extract_dir }}/certs/gateway.key"
+    csr_path: "{{ dsp_extract_dir }}/certs/gateway.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+365d"
+
+- name: Look up existing gateway TLS secret
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ dsp_kubeconfig }}"
+    kind: Secret
+    namespace: "{{ dsp_namespace }}"
+    name: "{{ dsp_gateway_tls_secret }}"
+  register: dsp_gateway_tls_lookup
+
+- name: Create gateway TLS secret
+  kubernetes.core.k8s:
+    kubeconfig: "{{ dsp_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ dsp_gateway_tls_secret }}"
+        namespace: "{{ dsp_namespace }}"
+      type: kubernetes.io/tls
+      data:
+        tls.crt: "{{ lookup('ansible.builtin.file', dsp_extract_dir ~ '/certs/gateway.pem') | b64encode }}"
+        tls.key: "{{ lookup('ansible.builtin.file', dsp_extract_dir ~ '/certs/gateway.key') | b64encode }}"
+  when: not dsp_gateway_tls_lookup.resources
+
+# Render the Helm values overlay from the template.
+- name: Render values.yaml
+  ansible.builtin.template:
+    src: values.yaml.j2
+    dest: "{{ dsp_extract_dir }}/values.yaml"
+    mode: "0644"
+
+- name: Stage tagging-pdp workflows (if the bundle ships them)
+  ansible.builtin.copy:
+    src: "{{ dsp_bundle_dir_resolved }}/kubernetes/tagging-pdp-workflows.yaml"
+    dest: "{{ dsp_extract_dir }}/tagging-pdp-workflows.yaml"
+    remote_src: true
+    mode: "0644"
+  register: dsp_tagging_copy
+  failed_when: false
+
+- name: Assemble helm values file list
+  ansible.builtin.set_fact:
+    dsp_values_files: >-
+      {{ [dsp_extract_dir ~ '/values.yaml']
+         + ([dsp_extract_dir ~ '/tagging-pdp-workflows.yaml'] if (dsp_tagging_copy.dest is defined and not dsp_tagging_copy.failed) else []) }}

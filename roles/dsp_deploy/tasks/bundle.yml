@@ -1,0 +1,33 @@
+---
+- name: Extract bundle and CLI tools
+  virtru.dsp_platform.bundle_extract:
+    bundle_file: "{{ dsp_bundle_file | default(omit, true) }}"
+    dest: "{{ dsp_extract_dir }}"
+    tools_bin: "{{ dsp_tools_bin }}"
+  register: dsp_bundle
+
+- name: Record resolved bundle paths
+  ansible.builtin.set_fact:
+    dsp_bundle_dir_resolved: "{{ dsp_bundle.extracted_bundle }}"
+    dsp_chart_path: "{{ dsp_bundle.chart_path }}"
+    dsp_bin: "{{ dsp_bundle.dsp_bin }}"
+    dsp_tructl_bin: "{{ dsp_bundle.tructl_bin }}"
+    dsp_helm_bin: "{{ dsp_bundle.helm_bin }}"
+    dsp_grpcurl_bin: "{{ dsp_bundle.grpcurl_bin | default('') }}"
+
+- name: Resolve DSP tag (explicit dsp_tag wins over auto-detection)
+  ansible.builtin.set_fact:
+    dsp_tag: "{{ dsp_tag if (dsp_tag | length > 0) else dsp_bundle.dsp_tag }}"
+
+- name: Fail when the DSP tag cannot be determined
+  ansible.builtin.assert:
+    that:
+      - dsp_tag | length > 0
+    fail_msg: >-
+      Could not determine dsp_tag from the bundle. Pass it explicitly, e.g.
+      -e dsp_tag=v2.8.0
+    quiet: true
+
+- name: Show resolved deployment facts
+  ansible.builtin.debug:
+    msg: "DSP tag={{ dsp_tag }} chart={{ dsp_chart_path | basename }} bundle={{ dsp_bundle_dir_resolved }}"

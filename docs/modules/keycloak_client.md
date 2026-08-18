@@ -74,4 +74,3 @@ Manage Keycloak clients on the DSP-embedded Keycloak.
 
 ## See Also
 
-- [deploy_k3s](deploy_k3s.md) - Deploy DSP on K3s

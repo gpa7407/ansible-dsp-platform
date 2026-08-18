@@ -1,0 +1,48 @@
+---
+# virtru.dsp_platform.dsp_deploy — orchestrates a full DSP deployment.
+# Each included file is one phase; see the role README for the flow.
+
+- name: Preflight checks and namespace
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [dsp, preflight]
+
+- name: Extract bundle and CLI tools
+  ansible.builtin.import_tasks: bundle.yml
+  tags: [dsp, bundle]
+
+- name: Push bundle images to the registry
+  ansible.builtin.import_tasks: images.yml
+  tags: [dsp, images]
+
+- name: Generate KAS / cosign keys
+  ansible.builtin.import_tasks: keys.yml
+  tags: [dsp, keys]
+
+- name: Create Kubernetes secrets
+  ansible.builtin.import_tasks: secrets.yml
+  tags: [dsp, secrets]
+
+- name: Render values and TLS
+  ansible.builtin.import_tasks: values.yml
+  tags: [dsp, values]
+
+# The platform discovers the IdP realm at startup, so the realm must exist
+# before the Helm deploy (otherwise helm --wait blocks on a platform that
+# crash-loops with a 404 discovering the missing realm).
+- name: Provision Keycloak realm
+  ansible.builtin.import_tasks: keycloak.yml
+  when: dsp_keycloak_provision | bool
+  tags: [dsp, keycloak]
+
+- name: Helm deploy DSP
+  ansible.builtin.import_tasks: deploy.yml
+  tags: [dsp, deploy]
+
+- name: Apply Traefik ingress
+  ansible.builtin.import_tasks: ingress.yml
+  tags: [dsp, ingress]
+
+- name: Verify deployment
+  ansible.builtin.import_tasks: verify.yml
+  when: dsp_run_verify | bool
+  tags: [dsp, verify]

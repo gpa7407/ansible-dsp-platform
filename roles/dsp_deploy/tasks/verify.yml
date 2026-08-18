@@ -1,0 +1,17 @@
+---
+- name: Verify the DSP deployment
+  virtru.dsp_platform.verify:
+    namespace: "{{ dsp_namespace }}"
+    helm_release: "{{ dsp_release_name }}"
+    platform_url: "{{ dsp_platform_url }}"
+    keycloak_url: "{{ dsp_auth_url }}"
+    kubectl_bin: kubectl
+    helm_bin: "{{ dsp_helm_bin | default('helm', true) }}"
+    grpcurl_bin: "{{ dsp_grpcurl_bin | default(omit, true) }}"
+    tls_no_verify: true
+    check_keycloak: "{{ dsp_keycloak_provision | bool }}"
+    timeout: "{{ dsp_wait_timeout }}"
+    fail_on_error: true
+  environment:
+    KUBECONFIG: "{{ dsp_kubeconfig }}"
+  register: dsp_verify

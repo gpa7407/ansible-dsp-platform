@@ -135,7 +135,8 @@ notes:
     Keycloak endpoint - so no network reachability to the public hostname is
     needed from the Ansible controller.
 seealso:
-  - module: virtru.dsp_platform.deploy_k3s
+  - description: The dsp_deploy role provisions the initial Keycloak realm and clients.
+    link: https://github.com/gpa7407/ansible-dsp-platform/tree/main/roles/dsp_deploy
 author:
   - Greg Paladin (@gpaladin)
 '''

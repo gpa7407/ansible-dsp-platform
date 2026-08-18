@@ -1,110 +1,219 @@
 # Ansible Collection: virtru.dsp_platform
 
-The `virtru.dsp_platform` collection includes modules for end-to-end deployment of the Virtru Data Security Platform (DSP) onto Kubernetes clusters. It provides idempotent automation for K3s deployment, health verification, teardown, Keycloak client management, and Helm operations.
+The `virtru.dsp_platform` collection deploys the Virtru Data Security Platform
+(DSP) onto K3s/Kubernetes clusters. Deployment is driven by the **`dsp_deploy`
+role**, which renders manifests from Jinja2 templates and applies them with the
+`kubernetes.core` modules. Supporting modules cover health verification,
+teardown, Keycloak client management, bundle extraction, and image copy.
+
+> **v2.0.0 note:** the monolithic `deploy_k3s` module has been replaced by the
+> `dsp_deploy` role, and `helm_deploy` has been removed in favour of
+> `kubernetes.core.helm`. See [CHANGELOG.rst](CHANGELOG.rst).
 
 ## Ansible version compatibility
 
-This collection has been tested against following Ansible versions: **>=2.14**.
+Tested against Ansible **>=2.15**.
 
-Plugins and modules within a collection may be tested with only specific Ansible versions.
-A collection may contain metadata that identifies these versions.
-PEP440 is the schema used to describe the versions of Ansible.
+## Dependencies
 
-## Changelog
+This collection depends on:
 
-See [CHANGELOG.rst](CHANGELOG.rst) for the release history and changes made to this collection.
+- `kubernetes.core` (helm, k8s, k8s_info)
+- `community.crypto` (KAS / gateway TLS key + cert generation)
+- `community.general`
 
-## Collection Documentation
+Target-host Python libraries: `kubernetes`, `cryptography`, `PyYAML`.
 
-### Included modules
+## Content
+
+### Roles
+
+| Role | Description |
+| ---- | ----------- |
+| [dsp_deploy](roles/dsp_deploy/README.md) | End-to-end DSP deployment on K3s/Kubernetes via templates + kubernetes.core. |
+
+### Modules
 
 | Module | Description | Docs |
 | ------ | ----------- | ---- |
-| [deploy_k3s](plugins/modules/deploy_k3s.py) | One-shot, idempotent end-to-end deployment of DSP on K3s. | [docs](docs/modules/deploy_k3s.md) |
 | [verify](plugins/modules/verify.py) | Read-only post-deploy health checks (pods, helm, HTTP, gRPC, Keycloak). | [docs](docs/modules/verify.md) |
 | [teardown](plugins/modules/teardown.py) | Selective uninstall of a DSP deployment. | [docs](docs/modules/teardown.md) |
-| [keycloak_client](plugins/modules/keycloak_client.py) | Full Keycloak client CRUD via `kcadm.sh` inside the Keycloak pod. | [docs](docs/modules/keycloak_client.md) |
-| [helm_deploy](plugins/modules/helm_deploy.py) | Full-featured `helm upgrade --install` / `helm uninstall` wrapper. | [docs](docs/modules/helm_deploy.md) |
-| [bundle_extract](plugins/modules/bundle_extract.py) | Extract a DSP bundle tarball and locate its CLI tools. | [docs](docs/modules/bundle_extract.md) |
+| [keycloak_client](plugins/modules/keycloak_client.py) | Keycloak client CRUD via `kcadm.sh` inside the Keycloak pod. | [docs](docs/modules/keycloak_client.md) |
+| [bundle_extract](plugins/modules/bundle_extract.py) | Extract a DSP bundle (or locate a pre-extracted one) and its CLI tools. | [docs](docs/modules/bundle_extract.md) |
 | [copy_images](plugins/modules/copy_images.py) | Push DSP container images from a bundle to a target registry. | [docs](docs/modules/copy_images.md) |
 
-### Included filter plugins
+### Filter plugins
 
 | Filter | Description |
 | ------ | ----------- |
-| `virtru.dsp_platform.version_ge` | Compare two semver-ish version strings (`v2.6.1 >= v2.6`). |
+| `virtru.dsp_platform.version_ge` | Compare two semver-ish version strings. (In playbooks prefer Ansible's built-in `version` test.) |
 
-Each module includes full Ansible documentation accessible via `ansible-doc`:
+## Requirements
 
-```
-ansible-doc virtru.dsp_platform.deploy_k3s
-```
+- A running K3s/Kubernetes cluster; a kubeconfig readable by the run user
+  (defaults to `/etc/rancher/k3s/k3s.yaml`). K3s bundles Traefik, which the role
+  uses for ingress.
+- A DSP bundle (tarball or a pre-extracted directory). The bundle ships the
+  `dsp`, `tructl`, `helm`, and `grpcurl` binaries the role uses.
+- An **external OIDC Identity Provider** (e.g. Keycloak) — reachable from the
+  cluster, with admin credentials so the role can provision the DSP realm.
+- An **external PostgreSQL 15+** database — an empty, dedicated database with a
+  full-privilege user.
+- On the target host: the `kubernetes`, `cryptography`, and `PyYAML` Python
+  libraries, plus the `kubernetes.core` / `community.crypto` / `community.general`
+  collections (see [Installation](#installation)).
 
-## Installation and Usage
+> DSP 2.0.7+ ships no embedded Keycloak/PostgreSQL — both are external. The role
+> was validated against **Keycloak 26.7** and **PostgreSQL 18**.
 
-### Requirements
+## Installation
 
-- A running K3s cluster on the target host
-- `kubectl`, `helm`, `openssl`, and optionally `yq` available on the target host
-- A DSP bundle tarball (`virtru-dsp-bundle-*.tar.gz`)
-- Python 3 on the target host with PyYAML available
-
-### Installing the Collection
-
-Install from Ansible Galaxy:
+Install the collection (it pulls in the `kubernetes.core`, `community.crypto`,
+and `community.general` dependencies automatically):
 
 ```bash
 ansible-galaxy collection install virtru.dsp_platform
-```
-
-Or include it in a `requirements.yml` file:
-
-```yaml
-collections:
-  - name: virtru.dsp_platform
-```
-
-Then install with:
-
-```bash
-ansible-galaxy collection install -r requirements.yml
-```
-
-You can also install directly from the Git repository:
-
-```bash
+# ...or from Git:
 ansible-galaxy collection install git+https://github.com/gpa7407/ansible-dsp-platform.git
 ```
 
-### Example Usage
+Install the Python libraries the modules need **on the target host** — either
+directly:
+
+```bash
+pip3 install kubernetes cryptography PyYAML
+```
+
+...or as an Ansible play you run before `dsp_deploy` (recommended, so the whole
+deploy is reproducible):
+
+```yaml
+- name: Install DSP deploy prerequisites
+  hosts: dsp
+  become: true
+  tasks:
+    - name: Install Python libraries for kubernetes.core + community.crypto
+      ansible.builtin.pip:
+        name:
+          - kubernetes
+          - cryptography
+          - PyYAML
+        # On distros with an externally-managed Python (PEP 668, e.g. Ubuntu
+        # 24.04), either set this or install into a virtualenv:
+        break_system_packages: true
+```
+
+> `break_system_packages` requires ansible-core >= 2.16. On older versions use
+> `extra_args: --break-system-packages`, a virtualenv (`virtualenv: /opt/dsp-venv`),
+> or the distro packages (e.g. `python3-kubernetes`, `python3-cryptography`).
+
+## Usage
+
+### Quick start
+
+At minimum, point the role at your domain, the bundle, and your external
+Keycloak/PostgreSQL:
+
+```yaml
+- name: Deploy Virtru DSP
+  hosts: dsp
+  become: true
+  roles:
+    - role: virtru.dsp_platform.dsp_deploy
+      vars:
+        dsp_domain: dsp.example.com
+        dsp_tag: v2.8.0
+        dsp_bundle_file: /opt/virtru-dsp-bundle-2.0.7.tar.gz
+        dsp_db_host: postgres.example.com
+        dsp_db_password: "{{ vault_db_password }}"
+        dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
+```
+
+See [`roles/dsp_deploy/README.md`](roles/dsp_deploy/README.md) and
+[`roles/dsp_deploy/defaults/main.yml`](roles/dsp_deploy/defaults/main.yml) for the
+full variable reference (registry, hostnames, realm/clients, timeouts, etc.).
+
+### Full deployment example
+
+This is an end-to-end deployment against an external Keycloak and PostgreSQL.
+
+**1. Inventory** (`inventory.ini`) — the target is the host with cluster access
+(e.g. a K3s node). Run the role there with a local connection:
+
+```ini
+[dsp]
+dsp-node ansible_host=10.0.0.10 ansible_user=ubuntu
+```
+
+**2. Playbook** (`site.yml`):
 
 ```yaml
 ---
-- name: Deploy and verify DSP on K3s
+- name: Deploy the Virtru Data Security Platform
   hosts: dsp
   become: true
+  gather_facts: true
+  roles:
+    - role: virtru.dsp_platform.dsp_deploy
+      vars:
+        # --- Core ---
+        dsp_domain: dsp.example.com          # platform/keycloak/tagging hostnames derive from this
+        dsp_tag: v2.8.0                        # DSP image tag (auto-detected from the bundle if omitted)
+        dsp_bundle_file: /opt/virtru-dsp-bundle-2.0.7.tar.gz
+        dsp_namespace: virtru
 
-  tasks:
-    - name: Deploy DSP
-      virtru.dsp_platform.deploy_k3s:
-        domain: dsp.vm
-        bundle_file: /opt/virtru-dsp-bundle-v2.0.6.1.tar.gz
-        namespace: virtru
-        registry_url: localhost:8888/virtru
-        registry_insecure: true
-        playground: true
-      register: deploy
+        # --- Container registry (bundle images are pushed here, chart pulls from here) ---
+        dsp_registry_url: registry.example.com/virtru
+        dsp_registry_insecure: false
 
-    - name: Verify health
-      virtru.dsp_platform.verify:
-        namespace: virtru
-        platform_url: "{{ deploy.platform_url }}"
-        keycloak_url: "{{ deploy.keycloak_url }}"
-        grpcurl_bin: "{{ deploy.dsp_bin | dirname }}/grpcurl"
-        tls_no_verify: true
+        # --- External PostgreSQL (empty DB + full-privilege user) ---
+        dsp_db_host: postgres.example.com
+        dsp_db_name: opentdf
+        dsp_db_user: opentdf
+        dsp_db_password: "{{ vault_db_password }}"
+
+        # --- External Keycloak (OIDC IdP) ---
+        # dsp_keycloak_hostname defaults to keycloak.<dsp_domain>; override if different.
+        dsp_keycloak_hostname: keycloak.example.com
+        dsp_keycloak_admin_user: admin
+        dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
+        dsp_keycloak_provision: true          # create the DSP realm/clients/roles (default)
+
+        # --- Tools shipped in the bundle (optional; only if not on PATH) ---
+        dsp_helm_bin: "/opt/virtru/tools-bin/helm"
+        dsp_grpcurl_bin: "/opt/virtru/tools-bin/grpcurl"
 ```
 
-To remove a deployment:
+**3. Run it:**
+
+```bash
+ansible-playbook -i inventory.ini site.yml
+```
+
+The role will, in order: extract the bundle + tools, push images to your
+registry, generate KAS/cosign keys and Kubernetes secrets, generate the gateway
+TLS cert, **provision the Keycloak realm/clients**, `helm upgrade --install` the
+platform, apply the Traefik `IngressRoute`, and run health verification
+(`/healthz`, well-known, gRPC health, Keycloak realm). On success the platform is
+reachable at `https://platform.<dsp_domain>`.
+
+> **Name resolution:** the platform pod must resolve your Keycloak hostname to
+> reach the IdP at startup. In environments without shared DNS (e.g. a single-node
+> lab), inject a host alias mapping the Keycloak hostname to the ingress IP:
+>
+> ```yaml
+> dsp_extra_values:
+>   platform:
+>     hostAliases:
+>       - ip: "10.0.0.10"          # the Traefik/ingress node IP
+>         hostnames: ["keycloak.example.com"]
+> ```
+
+**Seed sample users** (test data with clearance attributes) by adding
+`dsp_keycloak_seed_users: true`. **Bring your own realm** instead of provisioning
+it by setting `dsp_keycloak_provision: false` and configuring the IdP yourself.
+
+### Teardown
 
 ```yaml
 - name: Teardown DSP
@@ -116,60 +225,45 @@ To remove a deployment:
 
 ### Composition with `virtru.dsp_tructl`
 
-Post-deploy policy bootstrap belongs in `virtru.dsp_tructl`. A common pattern is:
+Post-deploy policy bootstrap (namespaces, attributes, mappings) belongs in
+`virtru.dsp_tructl`:
 
 ```yaml
-- virtru.dsp_platform.deploy_k3s: { ... }
-  register: deploy
-
-- virtru.dsp_platform.verify:
-    platform_url: "{{ deploy.platform_url }}"
+- import_role:
+    name: virtru.dsp_platform.dsp_deploy
+  vars:
+    dsp_domain: dsp.example.com
+    dsp_db_password: "{{ vault_db_password }}"
+    dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
 
 - virtru.dsp_tructl.auth:
     state: login
-    host: "{{ deploy.platform_url }}"
+    host: "https://platform.dsp.example.com"
 
 - virtru.dsp_tructl.namespace:
     name: example.com
     state: present
-
-- virtru.dsp_tructl.attribute: { ... }
-- virtru.dsp_tructl.subject_mapping: { ... }
 ```
-
-### Check Mode and Idempotency
-
-All modules support `--check` for dry-run operations. State-based modules query current state before making changes, ensuring idempotent operation. Running a playbook twice results in `changed=0` on the second run.
-
-## Contributing to this collection
-
-We welcome contributions. If you find problems, please open an issue or create a PR against the [ansible-dsp-platform repository](https://github.com/gpa7407/ansible-dsp-platform).
 
 ## Testing
 
-The collection can be validated with:
-
 ```bash
-# Syntax check all modules
-python3 -m py_compile plugins/modules/*.py
+# Lint the role and collection
+ansible-lint
 
-# View module documentation
-ansible-doc -t module virtru.dsp_platform.deploy_k3s
+# Sanity tests
+ansible-test sanity --docker
 
-# Dry run a playbook
-ansible-playbook tests/test_deploy_k3s.yml --check
+# Dry-run the example against a live host
+ansible-playbook -i tests/inventory.ini playbooks/deploy_dsp.yml \
+    -e dsp_domain=dsp.vm -e dsp_tag=v2.8.0 --check
 ```
 
-> **Note:** To run the full integration test suite against a live K3s host:
->
-> ```bash
-> sudo ansible-playbook -i tests/inventory.ini tests/test_deploy_k3s.yml \
->     -e bundle_file=/opt/virtru-dsp-bundle-v2.0.6.1.tar.gz \
->     -e domain=dsp.vm
-> ```
+## Contributing
+
+Issues and PRs welcome at the
+[ansible-dsp-platform repository](https://github.com/gpa7407/ansible-dsp-platform).
 
 ## License
 
-GNU General Public License v3.0 or later
-
-See [COPYING](COPYING) to see the full text.
+GNU General Public License v3.0 or later. See [COPYING](COPYING).

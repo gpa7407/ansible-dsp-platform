@@ -3,4 +3,5 @@ __pycache__/
 *.pyo
 *.tar.gz
 .vscode/
+.ansible/
 changelogs/.plugin-cache.yaml

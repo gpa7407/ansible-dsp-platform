@@ -1,15 +1,19 @@
 namespace: virtru
 name: dsp_platform
-version: 1.0.0
+version: 2.0.0
 readme: README.md
 authors:
   - Greg Paladin <greg.paladin@virtru.com>
 description: |
   Ansible collection for end-to-end deployment of the Virtru Data Security
-  Platform (DSP) onto Kubernetes clusters. Provides modules for K3s deployment,
-  health verification, teardown, Keycloak client management, and Helm operations.
+  Platform (DSP) onto Kubernetes clusters. Provides the dsp_deploy role
+  (template + kubernetes.core based), plus modules for health verification,
+  teardown, Keycloak client management, bundle extraction, and image copy.
 license_file: COPYING
 tags:
+  - security
+  - infrastructure
+  - tools
   - dsp
   - opentdf
   - kubernetes
@@ -18,7 +22,10 @@ tags:
   - deployment
   - k3s
   - virtru
-dependencies: {}
+dependencies:
+  kubernetes.core: ">=2.4.0"
+  community.crypto: ">=2.0.0"
+  community.general: ">=6.0.0"
 repository: https://github.com/gpa7407/ansible-dsp-platform
 documentation: https://github.com/gpa7407/ansible-dsp-platform/blob/main/README.md
 homepage: https://github.com/gpa7407/ansible-dsp-platform
@@ -28,6 +35,8 @@ build_ignore:
   - .git
   - .gitignore
   - .github
+  - .ansible
+  - .ansible-lint
   - tests/integration/inventory*
   - changelogs/.plugin-cache.yaml
   - '*.tar.gz'

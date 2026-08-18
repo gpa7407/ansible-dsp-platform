@@ -126,7 +126,8 @@ notes:
   - For application-layer verification (auth round-trip, policy CRUD) use the
     C(dsp.tructl) collection.
 seealso:
-  - module: virtru.dsp_platform.deploy_k3s
+  - description: The dsp_deploy role performs the deployment this module verifies.
+    link: https://github.com/gpa7407/ansible-dsp-platform/tree/main/roles/dsp_deploy
   - module: virtru.dsp_platform.teardown
 author:
   - Greg Paladin (@gpaladin)

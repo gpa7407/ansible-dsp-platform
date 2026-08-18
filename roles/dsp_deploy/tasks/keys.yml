@@ -1,0 +1,78 @@
+---
+# KAS + cosign keys. KAS keys use community.crypto (idempotent); cosign uses
+# the dsp CLI (no module equivalent). The cosign passphrase lives only in
+# memory + the K8s secret created in secrets.yml.
+- name: Ensure key directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ dsp_extract_dir }}/keys"
+    - "{{ dsp_extract_dir }}/keys/cosign"
+
+# --- KAS RSA keypair + self-signed cert ---
+- name: Generate KAS RSA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ dsp_extract_dir }}/keys/kas-private.pem"
+    type: RSA
+    size: "{{ dsp_kas_key_size }}"
+
+- name: Generate KAS RSA CSR
+  community.crypto.openssl_csr:
+    path: "{{ dsp_extract_dir }}/keys/kas.csr"
+    privatekey_path: "{{ dsp_extract_dir }}/keys/kas-private.pem"
+    common_name: kas
+
+- name: Generate KAS RSA self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ dsp_extract_dir }}/keys/kas-cert.pem"
+    privatekey_path: "{{ dsp_extract_dir }}/keys/kas-private.pem"
+    csr_path: "{{ dsp_extract_dir }}/keys/kas.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+365d"
+
+# --- KAS EC keypair + self-signed cert ---
+- name: Generate KAS EC private key
+  community.crypto.openssl_privatekey:
+    path: "{{ dsp_extract_dir }}/keys/kas-ec-private.pem"
+    type: ECC
+    curve: "{{ dsp_kas_curve }}"
+
+- name: Generate KAS EC CSR
+  community.crypto.openssl_csr:
+    path: "{{ dsp_extract_dir }}/keys/kas-ec.csr"
+    privatekey_path: "{{ dsp_extract_dir }}/keys/kas-ec-private.pem"
+    common_name: kas
+
+- name: Generate KAS EC self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ dsp_extract_dir }}/keys/kas-ec-cert.pem"
+    privatekey_path: "{{ dsp_extract_dir }}/keys/kas-ec-private.pem"
+    csr_path: "{{ dsp_extract_dir }}/keys/kas-ec.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+365d"
+
+# --- Cosign keypair (policy import/export signing) ---
+- name: Check for existing cosign key
+  ansible.builtin.stat:
+    path: "{{ dsp_extract_dir }}/keys/cosign/cosign.key"
+  register: dsp_cosign_key_stat
+
+- name: Determine cosign passphrase (memory only)
+  ansible.builtin.set_fact:
+    dsp_cosign_password_effective: >-
+      {{ dsp_cosign_password if (dsp_cosign_password | length > 0)
+         else lookup('ansible.builtin.password', '/dev/null length=24 chars=ascii_letters,digits') }}
+  no_log: true
+  when: not dsp_cosign_key_stat.stat.exists
+
+- name: Generate cosign keypair
+  ansible.builtin.command:
+    cmd: "{{ dsp_bin }} cosign generate-key-pair"
+    chdir: "{{ dsp_extract_dir }}/keys/cosign"
+    creates: "{{ dsp_extract_dir }}/keys/cosign/cosign.key"
+  environment:
+    COSIGN_PASSWORD: "{{ dsp_cosign_password_effective }}"
+  when: not dsp_cosign_key_stat.stat.exists
+  no_log: true

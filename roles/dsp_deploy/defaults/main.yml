@@ -1,0 +1,165 @@
+---
+# ===========================================================================
+# virtru.dsp_platform : dsp_deploy role defaults
+# ---------------------------------------------------------------------------
+# Deploys the Virtru Data Security Platform onto an existing K3s/Kubernetes
+# cluster using Jinja2-rendered manifests + the kubernetes.core modules.
+# Only dsp_domain is required; everything else has a sensible default.
+# ===========================================================================
+
+# --- Core identity -----------------------------------------------------------
+dsp_domain: ""                       # REQUIRED, e.g. "dsp.vm"
+dsp_namespace: virtru
+dsp_release_name: dsp
+dsp_deployment_mode: all             # chart platform.mode (all, core, ...)
+
+# DSP application/image tag (e.g. "v2.8.0"). Leave empty to auto-detect from
+# the bundle's oci-artifacts/data-security-platform/ directory (preferred over
+# the chart package version, which is unrelated to the image tag).
+dsp_tag: ""
+
+# --- Bundle / tooling --------------------------------------------------------
+dsp_bundle_file: ""                  # path to *.tar.gz (optional if pre-extracted)
+dsp_extract_dir: /opt/virtru
+dsp_bundle_dir: "{{ dsp_extract_dir }}/virtru-dsp-bundle"
+dsp_tools_bin: "{{ dsp_extract_dir }}/tools-bin"
+
+# --- Container registry ------------------------------------------------------
+# The bundle's images are pushed here, and the chart is pointed at it.
+dsp_registry_url: localhost:8888/virtru
+dsp_registry_insecure: true
+dsp_registry_fqdn: "{{ dsp_registry_url.split('/')[0] }}"
+
+# --- Hostnames (derived from dsp_domain unless overridden) -------------------
+dsp_platform_hostname: "platform.{{ dsp_domain }}"
+dsp_keycloak_hostname: "keycloak.{{ dsp_domain }}"
+dsp_tagging_hostname: "tagging-pdp.{{ dsp_domain }}"
+
+# --- Derived endpoints (usually leave as-is) ---------------------------------
+dsp_platform_url: "https://{{ dsp_platform_hostname }}"
+dsp_auth_url: "https://{{ dsp_keycloak_hostname }}"
+dsp_keycloak_realm: opentdf
+dsp_issuer: "{{ dsp_auth_url }}/realms/{{ dsp_keycloak_realm }}"
+dsp_token_endpoint: "{{ dsp_auth_url }}/realms/{{ dsp_keycloak_realm }}/protocol/openid-connect/token"
+
+# --- External dependencies ---------------------------------------------------
+# DSP requires an EXTERNAL, operational OIDC IdP and PostgreSQL database.
+# (Embedded "playground" Keycloak/Postgres is no longer supported by this role.)
+# Point the hostnames/db settings below at your running services.
+
+# --- Database (external PostgreSQL 15+) --------------------------------------
+dsp_db_host: platform-db             # hostname/Service of your external PostgreSQL
+dsp_db_port: 5432
+dsp_db_name: opentdf
+dsp_db_user: opentdf
+dsp_db_password: ""                  # auto-generated if empty
+dsp_db_credentials_secret: dsp-db-credentials
+
+# --- TLS / CORS --------------------------------------------------------------
+dsp_cors_enabled: true
+dsp_cors_origins:
+  - "*"
+  - "localhost:3000"
+dsp_gateway_tls_secret: dsp-gateway-tls
+dsp_additional_trusted_certs: []     # list of {secret: {...}} dicts; default trusts the gateway cert
+
+# --- Secrets / keys ----------------------------------------------------------
+dsp_keycloak_admin_password: ""      # required when dsp_keycloak_provision is true
+dsp_cosign_password: ""              # auto-generated if empty
+dsp_kas_key_size: 2048
+dsp_kas_curve: secp256r1
+
+# --- Cluster access ----------------------------------------------------------
+dsp_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# --- Helm / waits ------------------------------------------------------------
+dsp_helm_timeout: 15m
+dsp_wait: true                       # wait for workloads to become Ready
+dsp_wait_timeout: 900                # seconds, for k8s_info readiness waits
+dsp_health_retries: 30
+dsp_health_delay: 6
+
+# Extra values layered on top of the rendered values.yaml (as an additional
+# helm -f file). Use this instead of editing the template for one-off overrides.
+dsp_extra_values: {}
+
+# --- Keycloak realm provisioning (native, via community.general.keycloak_*) ---
+# Provisions the DSP realm/roles/clients directly against Keycloak's admin API
+# (works on DSP 2.0.7+, which removed `tructl provision`). Requires admin creds.
+dsp_keycloak_provision: true
+dsp_keycloak_admin_user: admin              # admin user of the external Keycloak
+dsp_keycloak_client_secret: secret          # shared confidential-client secret (override for prod)
+# Audience written into tokens (the platform validates aud == its endpoint):
+dsp_keycloak_token_audience: "{{ dsp_platform_url }}"
+
+dsp_keycloak_realm_roles:
+  - dsp-org-admin
+  - dsp-admin
+  - dsp-standard
+
+# Clients created in the realm. Each confidential client (publicClient=false)
+# gets dsp_keycloak_client_secret and the shared audience mapper. sa_realm_roles
+# / sa_client_roles are mapped onto the client's service-account user.
+dsp_keycloak_clients:
+  - {clientId: opentdf, serviceAccountsEnabled: true, sa_realm_roles: [dsp-org-admin]}
+  - {clientId: opentdf-admin, serviceAccountsEnabled: true, sa_realm_roles: [dsp-admin]}
+  - {clientId: opentdf-standard, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: opentdf-sdk, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - clientId: tdf-entity-resolution
+    serviceAccountsEnabled: true
+    sa_client_roles:
+      realm-management: [view-clients, query-clients, view-users, query-users]
+  - {clientId: dsp-tdf-reader, serviceAccountsEnabled: true, directAccessGrantsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: dsp-outlook, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: dsp-sharepoint, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: tagging-pdp, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: dsp-email-gateway, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - {clientId: virtru-ccp, serviceAccountsEnabled: true, sa_realm_roles: [dsp-standard]}
+  - clientId: dsp-windows-filewatcher
+    serviceAccountsEnabled: true
+    sa_realm_roles: [dsp-standard]
+    redirectUris: ["http://127.0.0.1/*"]
+    webOrigins: ["http://127.0.0.1/*"]
+  - clientId: dsp-outlook-auth
+    publicClient: true
+    directAccessGrantsEnabled: true
+    redirectUris: ["{{ dsp_platform_url }}/*", "{{ dsp_auth_url }}/*"]
+    webOrigins: ["{{ dsp_platform_url }}"]
+  - clientId: dsp-secure-viewer-web
+    publicClient: true
+    standardFlowEnabled: true
+    redirectUris: ["{{ dsp_platform_url }}/*", "{{ dsp_auth_url }}/*"]
+    webOrigins: ["{{ dsp_platform_url }}"]
+  - clientId: dsp-web-admin
+    publicClient: true
+    standardFlowEnabled: true
+    redirectUris: ["{{ dsp_platform_url }}/*", "{{ dsp_auth_url }}/*"]
+    webOrigins: ["{{ dsp_platform_url }}"]
+  - clientId: dsp-tdf-reader-electron
+    publicClient: true
+    standardFlowEnabled: true
+    redirectUris: ["http://localhost:43434/*"]
+    webOrigins: ["http://localhost:43434"]
+  - {clientId: cli-client, publicClient: true, redirectUris: ["http://localhost:*"]}
+
+# Sample users (nationality/clearance attributes) — test data, off by default.
+dsp_keycloak_seed_users: false
+dsp_keycloak_users:
+  - username: secret-usa-aaa
+    email: aaa@secret.usa
+    password: testuser123
+    realm_roles: [dsp-org-admin]
+    attributes: {nationality: [USA], needToKnow: [AAA], clearance: [S]}
+  - username: top-secret-gbr-bbb
+    email: bbb@topsecret.gbr
+    password: testuser123
+    realm_roles: [dsp-standard]
+    attributes: {nationality: [GBR], needToKnow: [BBB], clearance: [TS]}
+  - username: classified-fra-int
+    email: int@classified.fra
+    password: testuser123
+    realm_roles: [dsp-standard]
+    attributes: {nationality: [FRA], needToKnow: [INT], clearance: [C]}
+
+# --- Post-deploy verification ------------------------------------------------
+dsp_run_verify: true
