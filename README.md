@@ -51,23 +51,44 @@ Target-host Python libraries: `kubernetes`, `cryptography`, `PyYAML`.
 ## Requirements
 
 - A running K3s/Kubernetes cluster; a kubeconfig readable by the run user
-  (defaults to `/etc/rancher/k3s/k3s.yaml`).
-- The `helm` binary (the DSP bundle ships one).
-- A DSP bundle (tarball or pre-extracted directory).
+  (defaults to `/etc/rancher/k3s/k3s.yaml`). K3s bundles Traefik, which the role
+  uses for ingress.
+- A DSP bundle (tarball or a pre-extracted directory). The bundle ships the
+  `dsp`, `tructl`, `helm`, and `grpcurl` binaries the role uses.
+- An **external OIDC Identity Provider** (e.g. Keycloak) — reachable from the
+  cluster, with admin credentials so the role can provision the DSP realm.
+- An **external PostgreSQL 15+** database — an empty, dedicated database with a
+  full-privilege user.
+- On the target host: the `kubernetes`, `cryptography`, and `PyYAML` Python
+  libraries, plus the `kubernetes.core` / `community.crypto` / `community.general`
+  collections (see [Installation](#installation)).
+
+> DSP 2.0.7+ ships no embedded Keycloak/PostgreSQL — both are external. The role
+> was validated against **Keycloak 26.7** and **PostgreSQL 18**.
 
 ## Installation
 
+Install the collection (it pulls in the `kubernetes.core`, `community.crypto`,
+and `community.general` dependencies automatically):
+
 ```bash
 ansible-galaxy collection install virtru.dsp_platform
-```
-
-Or from Git:
-
-```bash
+# ...or from Git:
 ansible-galaxy collection install git+https://github.com/gpa7407/ansible-dsp-platform.git
 ```
 
+Install the Python libraries the modules need **on the target host**:
+
+```bash
+pip3 install kubernetes cryptography PyYAML
+```
+
 ## Usage
+
+### Quick start
+
+At minimum, point the role at your domain, the bundle, and your external
+Keycloak/PostgreSQL:
 
 ```yaml
 - name: Deploy Virtru DSP
@@ -76,17 +97,99 @@ ansible-galaxy collection install git+https://github.com/gpa7407/ansible-dsp-pla
   roles:
     - role: virtru.dsp_platform.dsp_deploy
       vars:
-        dsp_domain: dsp.vm
+        dsp_domain: dsp.example.com
         dsp_tag: v2.8.0
-        dsp_bundle_file: /home/vagrant/virtru-dsp-bundle-2.0.7.tar.gz
+        dsp_bundle_file: /opt/virtru-dsp-bundle-2.0.7.tar.gz
+        dsp_db_host: postgres.example.com
+        dsp_db_password: "{{ vault_db_password }}"
+        dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
 ```
 
-Only `dsp_domain` is required. See
-[`roles/dsp_deploy/README.md`](roles/dsp_deploy/README.md) and
-`roles/dsp_deploy/defaults/main.yml` for all variables (topology toggles for
-embedded vs external Keycloak/Postgres, registry, hostnames, timeouts, etc.).
+See [`roles/dsp_deploy/README.md`](roles/dsp_deploy/README.md) and
+[`roles/dsp_deploy/defaults/main.yml`](roles/dsp_deploy/defaults/main.yml) for the
+full variable reference (registry, hostnames, realm/clients, timeouts, etc.).
 
-To remove a deployment:
+### Full deployment example
+
+This is an end-to-end deployment against an external Keycloak and PostgreSQL.
+
+**1. Inventory** (`inventory.ini`) — the target is the host with cluster access
+(e.g. a K3s node). Run the role there with a local connection:
+
+```ini
+[dsp]
+dsp-node ansible_host=10.0.0.10 ansible_user=ubuntu
+```
+
+**2. Playbook** (`site.yml`):
+
+```yaml
+---
+- name: Deploy the Virtru Data Security Platform
+  hosts: dsp
+  become: true
+  gather_facts: true
+  roles:
+    - role: virtru.dsp_platform.dsp_deploy
+      vars:
+        # --- Core ---
+        dsp_domain: dsp.example.com          # platform/keycloak/tagging hostnames derive from this
+        dsp_tag: v2.8.0                        # DSP image tag (auto-detected from the bundle if omitted)
+        dsp_bundle_file: /opt/virtru-dsp-bundle-2.0.7.tar.gz
+        dsp_namespace: virtru
+
+        # --- Container registry (bundle images are pushed here, chart pulls from here) ---
+        dsp_registry_url: registry.example.com/virtru
+        dsp_registry_insecure: false
+
+        # --- External PostgreSQL (empty DB + full-privilege user) ---
+        dsp_db_host: postgres.example.com
+        dsp_db_name: opentdf
+        dsp_db_user: opentdf
+        dsp_db_password: "{{ vault_db_password }}"
+
+        # --- External Keycloak (OIDC IdP) ---
+        # dsp_keycloak_hostname defaults to keycloak.<dsp_domain>; override if different.
+        dsp_keycloak_hostname: keycloak.example.com
+        dsp_keycloak_admin_user: admin
+        dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
+        dsp_keycloak_provision: true          # create the DSP realm/clients/roles (default)
+
+        # --- Tools shipped in the bundle (optional; only if not on PATH) ---
+        dsp_helm_bin: "/opt/virtru/tools-bin/helm"
+        dsp_grpcurl_bin: "/opt/virtru/tools-bin/grpcurl"
+```
+
+**3. Run it:**
+
+```bash
+ansible-playbook -i inventory.ini site.yml
+```
+
+The role will, in order: extract the bundle + tools, push images to your
+registry, generate KAS/cosign keys and Kubernetes secrets, generate the gateway
+TLS cert, **provision the Keycloak realm/clients**, `helm upgrade --install` the
+platform, apply the Traefik `IngressRoute`, and run health verification
+(`/healthz`, well-known, gRPC health, Keycloak realm). On success the platform is
+reachable at `https://platform.<dsp_domain>`.
+
+> **Name resolution:** the platform pod must resolve your Keycloak hostname to
+> reach the IdP at startup. In environments without shared DNS (e.g. a single-node
+> lab), inject a host alias mapping the Keycloak hostname to the ingress IP:
+>
+> ```yaml
+> dsp_extra_values:
+>   platform:
+>     hostAliases:
+>       - ip: "10.0.0.10"          # the Traefik/ingress node IP
+>         hostnames: ["keycloak.example.com"]
+> ```
+
+**Seed sample users** (test data with clearance attributes) by adding
+`dsp_keycloak_seed_users: true`. **Bring your own realm** instead of provisioning
+it by setting `dsp_keycloak_provision: false` and configuring the IdP yourself.
+
+### Teardown
 
 ```yaml
 - name: Teardown DSP
@@ -98,17 +201,20 @@ To remove a deployment:
 
 ### Composition with `virtru.dsp_tructl`
 
-Post-deploy policy bootstrap belongs in `virtru.dsp_tructl`:
+Post-deploy policy bootstrap (namespaces, attributes, mappings) belongs in
+`virtru.dsp_tructl`:
 
 ```yaml
 - import_role:
     name: virtru.dsp_platform.dsp_deploy
   vars:
-    dsp_domain: dsp.vm
+    dsp_domain: dsp.example.com
+    dsp_db_password: "{{ vault_db_password }}"
+    dsp_keycloak_admin_password: "{{ vault_kc_admin_password }}"
 
 - virtru.dsp_tructl.auth:
     state: login
-    host: "https://platform.dsp.vm"
+    host: "https://platform.dsp.example.com"
 
 - virtru.dsp_tructl.namespace:
     name: example.com
