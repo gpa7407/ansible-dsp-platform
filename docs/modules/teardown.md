@@ -60,5 +60,4 @@ Remove a Virtru DSP deployment.
 
 ## See Also
 
-- [deploy_k3s](deploy_k3s.md) - Deploy DSP on K3s
 - [verify](verify.md) - Verify a DSP deployment is healthy

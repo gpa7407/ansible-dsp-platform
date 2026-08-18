@@ -1,0 +1,14 @@
+---
+# Example: deploy DSP with the dsp_deploy role.
+#
+#   ansible-playbook virtru.dsp_platform.deploy_dsp \
+#     -e dsp_domain=dsp.vm -e dsp_tag=v2.8.0 \
+#     -e dsp_bundle_file=/home/vagrant/virtru-dsp-bundle-2.0.7.tar.gz
+#
+- name: Deploy Virtru DSP
+  hosts: all
+  become: true
+  roles:
+    - role: virtru.dsp_platform.dsp_deploy
+      vars:
+        dsp_domain: "{{ dsp_domain | default('dsp.vm') }}"

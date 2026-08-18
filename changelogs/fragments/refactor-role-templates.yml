@@ -1,0 +1,27 @@
+---
+major_changes:
+  - dsp_deploy - New role that replaces the deploy_k3s module. Deployment is now
+    a sequence of small tasks that render Jinja2 templates (values.yaml,
+    Traefik IngressRoute) and apply them with the kubernetes.core modules,
+    instead of a monolithic module shelling out to sed/yq/kubectl/helm.
+  - dsp_deploy - Deploys against an EXTERNAL Keycloak + PostgreSQL only
+    (embedded "playground" mode removed). The DSP realm/roles/clients and
+    service-account role mappings are provisioned natively via the
+    community.general.keycloak_* modules (DSP 2.0.7 removed `tructl provision`).
+    Validated against Keycloak 26.7 and PostgreSQL 18.
+
+breaking_changes:
+  - deploy_k3s - Removed; use the virtru.dsp_platform.dsp_deploy role.
+  - helm_deploy - Removed; use kubernetes.core.helm.
+  - The collection now depends on kubernetes.core, community.crypto, and
+    community.general (see galaxy.yml).
+
+minor_changes:
+  - bundle_extract - bundle_file is now optional so the module works against an
+    already-extracted (rsynced) bundle; dsp_tag is detected from the bundle's
+    oci-artifacts image tag rather than the unrelated chart package version.
+
+bugfixes:
+  - bundle_extract - Import tarfile (the tarball extraction path previously
+    raised NameError) and extract with the tar data filter to prevent path
+    traversal.

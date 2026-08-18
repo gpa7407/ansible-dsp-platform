@@ -45,4 +45,3 @@ Push DSP container images to a target registry.
 ## See Also
 
 - [bundle_extract](bundle_extract.md) - Extract a DSP bundle and tools
-- [deploy_k3s](deploy_k3s.md) - Deploy DSP on K3s (uses copy_images internally)

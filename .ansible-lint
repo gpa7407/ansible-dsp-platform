@@ -1,0 +1,11 @@
+---
+# The collection deliberately namespaces all role variables with the shared
+# `dsp_` prefix (matching the collection name `dsp_platform`) rather than a
+# per-role `dsp_deploy_` prefix, so the public interface stays consistent
+# across roles and modules.
+skip_list:
+  - var-naming[no-role-prefix]
+
+# antsibull-changelog generates changelogs/changelog.yaml; don't lint generated files.
+exclude_paths:
+  - changelogs/changelog.yaml

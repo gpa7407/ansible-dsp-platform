@@ -1,0 +1,20 @@
+---
+- name: Validate required inputs
+  ansible.builtin.assert:
+    that:
+      - dsp_domain | length > 0
+    fail_msg: "dsp_domain is required (e.g. dsp_domain=dsp.vm)."
+    quiet: true
+
+- name: Set common kubernetes.core connection args
+  ansible.builtin.set_fact:
+    dsp_k8s_conn:
+      kubeconfig: "{{ dsp_kubeconfig }}"
+
+- name: Ensure namespace exists
+  kubernetes.core.k8s:
+    kubeconfig: "{{ dsp_kubeconfig }}"
+    api_version: v1
+    kind: Namespace
+    name: "{{ dsp_namespace }}"
+    state: present

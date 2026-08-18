@@ -43,4 +43,3 @@ Extract a Virtru DSP bundle and tools.
 ## See Also
 
 - [copy_images](copy_images.md) - Push bundle images to a registry
-- [deploy_k3s](deploy_k3s.md) - Deploy DSP on K3s (uses bundle_extract internally)

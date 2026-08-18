@@ -1,0 +1,19 @@
+---
+- name: Apply Traefik IngressRoute
+  kubernetes.core.k8s:
+    kubeconfig: "{{ dsp_kubeconfig }}"
+    state: present
+    namespace: "{{ dsp_namespace }}"
+    template: ingressroute.yaml.j2
+
+- name: Wait for the platform HTTPS endpoint to answer
+  ansible.builtin.uri:
+    url: "https://{{ dsp_platform_hostname }}/healthz"
+    validate_certs: false
+    status_code: [200, 426]
+  register: dsp_healthz
+  retries: "{{ dsp_health_retries }}"
+  delay: "{{ dsp_health_delay }}"
+  until: dsp_healthz.status in [200, 426]
+  when: dsp_wait | bool
+  failed_when: false

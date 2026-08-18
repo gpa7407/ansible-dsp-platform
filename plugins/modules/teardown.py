@@ -92,7 +92,8 @@ notes:
   - PVCs and other namespaced resources are removed by namespace deletion -
     they are not deleted individually.
 seealso:
-  - module: virtru.dsp_platform.deploy_k3s
+  - description: The dsp_deploy role performs the deployment this module reverses.
+    link: https://github.com/gpa7407/ansible-dsp-platform/tree/main/roles/dsp_deploy
   - module: virtru.dsp_platform.verify
 author:
   - Greg Paladin (@gpaladin)

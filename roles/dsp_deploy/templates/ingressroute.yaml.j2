@@ -1,0 +1,31 @@
+# Managed by the virtru.dsp_platform.dsp_deploy role.
+# Traefik IngressRoute for DSP (K3s ships Traefik by default).
+# Only the platform + tagging hosts are routed here; the external Keycloak
+# manages its own ingress.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dsp-all
+  namespace: {{ dsp_namespace }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host("{{ dsp_platform_hostname }}")
+      services:
+        - name: dsp-platform
+          namespace: {{ dsp_namespace }}
+          passHostHeader: true
+          port: 9000
+          scheme: h2c
+    - kind: Rule
+      match: Host("{{ dsp_tagging_hostname }}")
+      services:
+        - name: dsp-platform
+          namespace: {{ dsp_namespace }}
+          passHostHeader: true
+          port: 9000
+          scheme: h2c
+  tls:
+    secretName: {{ dsp_gateway_tls_secret }}

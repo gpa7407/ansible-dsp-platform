@@ -1,0 +1,13 @@
+---
+- name: Helm upgrade --install DSP
+  kubernetes.core.helm:
+    kubeconfig: "{{ dsp_kubeconfig }}"
+    binary_path: "{{ dsp_helm_bin | default(omit, true) }}"
+    release_name: "{{ dsp_release_name }}"
+    release_namespace: "{{ dsp_namespace }}"
+    chart_ref: "{{ dsp_chart_path }}"
+    values_files: "{{ dsp_values_files }}"
+    release_values: "{{ dsp_extra_values }}"
+    wait: "{{ dsp_wait }}"
+    timeout: "{{ dsp_helm_timeout }}"
+  register: dsp_helm

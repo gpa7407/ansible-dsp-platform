@@ -1,0 +1,8 @@
+---
+- name: Push bundle images to the registry
+  virtru.dsp_platform.copy_images:
+    dsp_bin: "{{ dsp_bin }}"
+    registry_url: "{{ dsp_registry_url }}"
+    insecure: "{{ dsp_registry_insecure }}"
+    extracted_bundle: "{{ dsp_bundle_dir_resolved }}"
+  register: dsp_images
