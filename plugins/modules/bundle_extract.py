@@ -108,8 +108,16 @@ _CLEAN_TAG_RE = re.compile(r'^v\d+\.\d+(?:\.\d+){0,2}$')
 
 
 def _locate_bundle(dest):
-    """Return the bundle dir containing charts/, or None."""
-    for candidate in (os.path.join(dest, 'virtru-dsp-bundle'), dest):
+    """Return the bundle dir containing charts/, or None.
+
+    Accepts the canonical ``virtru-dsp-bundle`` name, the dest itself, or a
+    versioned/pre-extracted dir such as ``virtru-dsp-bundle-2.0.7`` (any child
+    directory that contains a ``charts/`` subdir).
+    """
+    candidates = [os.path.join(dest, 'virtru-dsp-bundle'), dest]
+    # Versioned or otherwise-named extracted bundles, e.g. virtru-dsp-bundle-2.0.7
+    candidates.extend(sorted(glob.glob(os.path.join(dest, 'virtru-dsp-bundle*'))))
+    for candidate in candidates:
         if os.path.isdir(os.path.join(candidate, 'charts')):
             return candidate
     return None

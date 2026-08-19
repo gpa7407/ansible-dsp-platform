@@ -4,6 +4,14 @@ DSP Platform Collection Release Notes
 
 .. contents:: Topics
 
+v2.0.1
+======
+
+Bugfixes
+--------
+
+- bundle_extract - locate a pre-extracted bundle in a versioned directory (e.g. ``virtru-dsp-bundle-2.0.7``) by globbing ``virtru-dsp-bundle*`` under the destination, not only the exact ``virtru-dsp-bundle`` name. Lets the dsp_deploy role consume an already-extracted bundle without renaming it.
+
 v2.0.0
 ======
 

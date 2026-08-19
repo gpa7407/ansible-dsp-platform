@@ -21,11 +21,6 @@ releases:
     release_date: '2026-05-01'
   2.0.0:
     changes:
-      release_summary: 'Major refactor for DSP 2.0.7+: the monolithic ``deploy_k3s``
-        module is replaced by the template-based ``dsp_deploy`` role, deployment
-        targets an external Keycloak + PostgreSQL, and the Keycloak realm is
-        provisioned natively via ``community.general.keycloak_*``. Validated against
-        Keycloak 26.7 and PostgreSQL 18.'
       breaking_changes:
       - The collection now depends on kubernetes.core, community.crypto, and community.general
         (see galaxy.yml).
@@ -48,6 +43,21 @@ releases:
       - bundle_extract - bundle_file is now optional so the module works against an
         already-extracted (rsynced) bundle; dsp_tag is detected from the bundle's
         oci-artifacts image tag rather than the unrelated chart package version.
+      release_summary: 'Major refactor for DSP 2.0.7+: the monolithic ``deploy_k3s``
+        module is replaced by the template-based ``dsp_deploy`` role, deployment targets
+        an external Keycloak + PostgreSQL, and the Keycloak realm is provisioned natively
+        via ``community.general.keycloak_*``. Validated against Keycloak 26.7 and
+        PostgreSQL 18.'
     fragments:
     - refactor-role-templates.yml
     release_date: '2026-08-18'
+  2.0.1:
+    changes:
+      bugfixes:
+      - bundle_extract - locate a pre-extracted bundle in a versioned directory (e.g.
+        ``virtru-dsp-bundle-2.0.7``) by globbing ``virtru-dsp-bundle*`` under the
+        destination, not only the exact ``virtru-dsp-bundle`` name. Lets the dsp_deploy
+        role consume an already-extracted bundle without renaming it.
+    fragments:
+    - 2.0.1.yml
+    release_date: '2026-08-19'
