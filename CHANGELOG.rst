@@ -4,6 +4,14 @@ DSP Platform Collection Release Notes
 
 .. contents:: Topics
 
+v2.0.2
+======
+
+Bugfixes
+--------
+
+- dsp_deploy - fix a fresh-deploy failure where the KAS/cosign secret tasks read root-generated key files via a controller-side ``lookup('file')`` (runs as the ansible user) and hit permission denied. The role now makes the generated key material readable before assembling the secrets. Previously masked when the secrets already existed (create was skipped).
+
 v2.0.1
 ======
 

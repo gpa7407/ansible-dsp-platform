@@ -61,3 +61,14 @@ releases:
     fragments:
     - 2.0.1.yml
     release_date: '2026-08-19'
+  2.0.2:
+    changes:
+      bugfixes:
+      - dsp_deploy - fix a fresh-deploy failure where the KAS/cosign secret tasks
+        read root-generated key files via a controller-side ``lookup('file')`` (runs
+        as the ansible user) and hit permission denied. The role now makes the generated
+        key material readable before assembling the secrets. Previously masked when
+        the secrets already existed (create was skipped).
+    fragments:
+    - 2.0.2.yml
+    release_date: '2026-08-20'
